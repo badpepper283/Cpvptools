@@ -22,7 +22,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
@@ -53,7 +53,7 @@ public final class CpvpClient implements ClientModInitializer {
 
     static void say(String text) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) mc.player.displayClientMessage(Component.literal("[CPVP] " + text), false);
+        if (mc.player != null) mc.player.sendSystemMessage(Component.literal("[CPVP] " + text));
     }
 
     private static String onOff(boolean b) { return b ? "ACIK" : "KAPALI"; }
@@ -171,7 +171,7 @@ final class AutoTotem {
     private static int cooldown = 0;
 
     public static void tick(Minecraft mc) {
-        if (!enabled || mc.player == null || mc.gameMode == null || mc.screen != null) return;
+        if (!enabled || mc.player == null || mc.gameMode == null) return;
         if (cooldown > 0) { cooldown--; return; }
 
         LocalPlayer p = mc.player;
@@ -181,7 +181,7 @@ final class AutoTotem {
         if (slot < 0) return;
 
         // SWAP + buton 40 = offhand ile degistir
-        mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, Inv.menuSlot(slot), 40, ClickType.SWAP, p);
+        mc.gameMode.handleContainerInput(p.inventoryMenu.containerId, Inv.menuSlot(slot), 40, ContainerInput.SWAP, p);
         cooldown = 2;
     }
 }
@@ -197,7 +197,7 @@ final class AutoCrystal {
     private static int timer = 0;
 
     public static void tick(Minecraft mc) {
-        if (!enabled || mc.player == null || mc.level == null || mc.gameMode == null || mc.screen != null) return;
+        if (!enabled || mc.player == null || mc.level == null || mc.gameMode == null) return;
         if (timer > 0) { timer--; return; }
 
         LocalPlayer me = mc.player;
@@ -359,4 +359,4 @@ final class AnchorBomb {
         mc.gameMode.useItemOn(me, InteractionHand.MAIN_HAND, hit);
         me.swing(InteractionHand.MAIN_HAND);
     }
-    }
+}
