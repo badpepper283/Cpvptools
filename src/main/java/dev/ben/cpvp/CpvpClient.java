@@ -182,7 +182,7 @@ final class AutoTotem {
 
         // SWAP + buton 40 = offhand ile degistir
         mc.gameMode.handleContainerInput(p.inventoryMenu.containerId, Inv.menuSlot(slot), 40, ContainerInput.SWAP, p);
-        cooldown = 2;
+        cooldown = 0;
     }
 }
 
