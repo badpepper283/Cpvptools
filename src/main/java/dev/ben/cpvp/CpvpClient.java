@@ -22,7 +22,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
@@ -53,7 +53,7 @@ public final class CpvpClient implements ClientModInitializer {
 
     static void say(String text) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) mc.player.sendSystemMessage(Component.literal("[CPVP] " + text));
+        if (mc.player != null) mc.player.displayClientMessage(Component.literal("[CPVP] " + text), false);
     }
 
     private static String onOff(boolean b) { return b ? "ACIK" : "KAPALI"; }
@@ -181,7 +181,7 @@ final class AutoTotem {
         if (slot < 0) return;
 
         // SWAP + buton 40 = offhand ile degistir
-        mc.gameMode.handleContainerInput(p.inventoryMenu.containerId, Inv.menuSlot(slot), 40, ContainerInput.SWAP, p);
+        mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, Inv.menuSlot(slot), 40, ClickType.SWAP, p);
         cooldown = 0;
     }
 }
