@@ -39,8 +39,10 @@ public final class CpvpClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        // Totem: tick'in BASINDA (hareket paketinden once) calisir
+        ClientTickEvents.START_CLIENT_TICK.register(AutoTotem::tick);
+
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
-            AutoTotem.tick(mc);
             AnchorBomb.tick(mc);
             AutoCrystal.tick(mc);
         });
@@ -168,36 +170,45 @@ final class Inv {
     }
 }
 
+/**
+ * Offhand'de totem yoksa hemen totem koyar (hareket halinde de).
+ * Tick'in BASINDA calisir: paketler hareket paketinden once gider, normal oyuncu gibi.
+ * Hotbar'daki totem: F tusu takasi. Envanterdeki totem: offhand'e dogrudan takas tiklamasi.
+ */
 final class AutoTotem {
     public static boolean enabled = true;
     private static int cooldown = 0;
 
     public static void tick(Minecraft mc) {
-        if (!enabled || mc.player == null || mc.gameMode == null) return;
+        if (!enabled || mc.player == null || mc.gameMode == null || mc.getConnection() == null) return;
+        LocalPlayer p = mc.player;
+        Inventory inv = p.getInventory();
+
+        // Offhand'de totem var: is tamam, beklemeyi sifirla
+        if (p.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) { cooldown = 0; return; }
         if (cooldown > 0) { cooldown--; return; }
 
-        LocalPlayer p = mc.player;
-        if (p.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) return;
-
-        int slot = Inv.findAny(p.getInventory(), Items.TOTEM_OF_UNDYING);
+        int slot = Inv.findAny(inv, Items.TOTEM_OF_UNDYING);
         if (slot < 0) return;
 
-        // Hotbar'daysa F tusu gibi offhand takasi (hareket ederken de calisir)
-        if (slot < 9 && mc.getConnection() != null) {
-            Inventory inv = p.getInventory();
+        if (slot < 9) {
+            // Hotbar'da: F tusu gibi takas
             int prev = inv.getSelectedSlot();
-            inv.setSelectedSlot(slot);
-            mc.getConnection().send(new ServerboundSetCarriedItemPacket(slot));
-            mc.getConnection().send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
-            inv.setSelectedSlot(prev);
-            mc.getConnection().send(new ServerboundSetCarriedItemPacket(prev));
-            cooldown = 4;
-            return;
+            if (slot != prev) {
+                inv.setSelectedSlot(slot);
+                mc.getConnection().send(new ServerboundSetCarriedItemPacket(slot));
+            }
+            mc.getConnection().send(new ServerboundPlayerActionPacket(
+                    ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+            if (slot != prev) {
+                inv.setSelectedSlot(prev);
+                mc.getConnection().send(new ServerboundSetCarriedItemPacket(prev));
+            }
+        } else {
+            // Envanterde: dogrudan offhand'e takas (SWAP, buton 40)
+            mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, slot, 40, ClickType.SWAP, p);
         }
-
-        // SWAP + buton 40 = offhand ile degistir
-        mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, Inv.menuSlot(slot), 40, ClickType.SWAP, p);
-        cooldown = 0;
+        cooldown = 6; // sunucu onaylayana kadar tekrar deneme (cift takas olmasin)
     }
 }
 
@@ -384,4 +395,4 @@ final class AnchorBomb {
         mc.gameMode.useItemOn(me, InteractionHand.MAIN_HAND, hit);
         me.swing(InteractionHand.MAIN_HAND);
     }
-}
+            }
