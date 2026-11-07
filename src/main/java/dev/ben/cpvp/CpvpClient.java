@@ -11,6 +11,8 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -180,6 +182,19 @@ final class AutoTotem {
         int slot = Inv.findAny(p.getInventory(), Items.TOTEM_OF_UNDYING);
         if (slot < 0) return;
 
+        // Hotbar'daysa F tusu gibi offhand takasi (hareket ederken de calisir)
+        if (slot < 9 && mc.getConnection() != null) {
+            Inventory inv = p.getInventory();
+            int prev = inv.getSelectedSlot();
+            inv.setSelectedSlot(slot);
+            mc.getConnection().send(new ServerboundSetCarriedItemPacket(slot));
+            mc.getConnection().send(new ServerboundPlayerActionPacket(ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+            inv.setSelectedSlot(prev);
+            mc.getConnection().send(new ServerboundSetCarriedItemPacket(prev));
+            cooldown = 4;
+            return;
+        }
+
         // SWAP + buton 40 = offhand ile degistir
         mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, Inv.menuSlot(slot), 40, ClickType.SWAP, p);
         cooldown = 0;
@@ -333,7 +348,17 @@ final class AnchorBomb {
 
         Inventory inv = me.getInventory();
         int prev = inv.getSelectedSlot();
-        BlockHitResult hit = new BlockHitResult(center, Direction.UP, pos, false);
+
+        // Gercekten baktigin noktayi kullan; bakmiyorsan sana bakan yuzeyden hesapla
+        BlockHitResult hit;
+        if (mc.hitResult instanceof BlockHitResult bhr && bhr.getBlockPos().equals(pos)) {
+            hit = bhr;
+        } else {
+            Vec3 toEye = me.getEyePosition().subtract(center);
+            Direction face = Direction.getApproximateNearest(toEye.x, toEye.y, toEye.z);
+            Vec3 on = center.add(face.getStepX() * 0.5, face.getStepY() * 0.5, face.getStepZ() * 0.5);
+            hit = new BlockHitResult(on, face, pos, false);
+        }
 
         // 1) Glowstone ile sarj et
         InteractionHand chargeHand;
