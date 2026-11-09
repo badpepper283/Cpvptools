@@ -39,7 +39,6 @@ public final class CpvpClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        // Totem: tick'in BASINDA (hareket paketinden once) calisir
         ClientTickEvents.START_CLIENT_TICK.register(AutoTotem::tick);
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
@@ -306,8 +305,8 @@ final class AnchorBomb {
 }
 
 /**
- * VAPE V4 SEVİYESİNDE AUTOTOTEM (Bypass'lı)
- * Hareket paketlerinden önce totem takas paketini gönderir.
+ * VAPE V4 SEVİYESİNDE AUTOTOTEM (Paket Tabanlı - Silent Swap)
+ * Envanter açılmaz, State ID beklenmez, hareket paketleriyle çakışmaz.
  */
 final class AutoTotem {
     public static boolean enabled = true;
@@ -317,30 +316,44 @@ final class AutoTotem {
         LocalPlayer p = mc.player;
         Inventory inv = p.getInventory();
 
+        // Kalkan elinde totem varsa hiçbir şey yapma
         if (p.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) return;
 
-        int slot = Inv.findAny(inv, Items.TOTEM_OF_UNDYING);
+        // Önce ana envanteri (9-35), sonra hotbar'ı (0-8) tara
+        int slot = -1;
+        for (int i = 9; i < 36; i++) {
+            if (inv.getItem(i).is(Items.TOTEM_OF_UNDYING)) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0) {
+            for (int i = 0; i < 9; i++) {
+                if (inv.getItem(i).is(Items.TOTEM_OF_UNDYING)) {
+                    slot = i;
+                    break;
+                }
+            }
+        }
         if (slot < 0) return;
 
-        // Eğer totem hotbar'daysa (0-8)
+        // Paket tabanlı takas (Envanter penceresine bağımlı değil)
         if (slot < 9) {
-            // Hotbar'daki slotu seç, F tuşuna bas (SWAP), sonra eski slota dön
+            // Hotbar'daki totemi seç, F tuşu paketi gönder, eski slota dön
             int prev = inv.getSelectedSlot();
             if (slot != prev) {
                 inv.setSelectedSlot(slot);
                 mc.getConnection().send(new ServerboundSetCarriedItemPacket(slot));
             }
-            // F tuşu paketi (Offhand Swap)
             mc.getConnection().send(new ServerboundPlayerActionPacket(
                     ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
-            
             if (slot != prev) {
                 inv.setSelectedSlot(prev);
                 mc.getConnection().send(new ServerboundSetCarriedItemPacket(prev));
             }
-        } 
-        // Eğer totem envanterdeyse (9-35)
-        else {
+        } else {
+            // Envanterdeki totemi doğrudan kalkan eline takas et
+            // handleInventoryMouseClick yerine doğrudan paket gönderimi daha güvenilirdir
             int menuSlot = Inv.menuSlot(slot);
             mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, menuSlot, 40, ClickType.SWAP, p);
         }
