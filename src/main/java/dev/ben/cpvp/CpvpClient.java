@@ -1,6 +1,7 @@
 package dev.ben.cpvp;
 
 import java.util.List;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMaps; // EKSİK OLAN KÜTÜPHANE EKLENDİ
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
@@ -13,7 +14,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
-import net.minecraft.network.protocol.game.ServerboundContainerClickPacket; // YENİ EKLENDİ
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket; // EKLENDİ
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -27,7 +28,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStack; // EKLENDİ
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
@@ -308,8 +309,6 @@ final class AnchorBomb {
 
 /**
  * VAPE V4 SEVİYESİNDE AUTOTOTEM (Packet Tabanlı - Silent Swap)
- * Ekrandaki envanteri değiştirmez, sadece sunucuya "takas et" der.
- * Bu sayede hareket ederken ekranda totem gidip gelmez ve anında eline alır.
  */
 final class AutoTotem {
     public static boolean enabled = true;
@@ -325,18 +324,15 @@ final class AutoTotem {
             return;
         }
 
-        // Sunucu yanıt vermezse 5 tick (0.25 saniye) sonra tekrar dene
         if (waitTicks > 0) {
             waitTicks--;
             return;
         }
 
-        // Envanterin tamamında totem ara
         int slot = Inv.findAny(inv, Items.TOTEM_OF_UNDYING);
         if (slot < 0) return;
 
         if (slot < 9) {
-            // Hotbar'daki totem: F tuşu paketi gönder
             int prev = inv.getSelectedSlot();
             if (slot != prev) {
                 inv.setSelectedSlot(slot);
@@ -349,19 +345,19 @@ final class AutoTotem {
                 mc.getConnection().send(new ServerboundSetCarriedItemPacket(prev));
             }
         } else {
-            // Envanterdeki totem: DOĞRUDAN PAKET gönder (Ekranı güncelleme, desync'i önle)
             int menuSlot = Inv.menuSlot(slot);
+            // DÜZELTİLEN KISIM: FastUtil kütüphanesi doğrudan import edildi
             mc.getConnection().send(new ServerboundContainerClickPacket(
                     p.inventoryMenu.containerId,
                     p.inventoryMenu.getStateId(),
                     (short) menuSlot,
-                    (byte) 40, // Button 40 = Offhand (Kalkan eli)
+                    (byte) 40,
                     ClickType.SWAP,
                     p.inventoryMenu.getCarried(),
-                    new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>()
+                    Int2ObjectMaps.emptyMap()
             ));
         }
         
-        waitTicks = 5; // Paketin sunucuya ulaşması için 5 tick bekle
+        waitTicks = 5;
     }
-}
+                            }
