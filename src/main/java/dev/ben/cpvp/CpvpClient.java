@@ -1,6 +1,7 @@
 package dev.ben.cpvp;
 
 import java.util.List;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap; // Paket için gerekli
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
@@ -11,6 +12,9 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -23,6 +27,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
@@ -302,41 +307,57 @@ final class AnchorBomb {
 }
 
 /**
- * KUSURSUZ AUTOTOTEM (Desync Korumalı)
+ * VAPE V4 SEVİYESİNDE AUTOTOTEM (Silent Swap)
  */
 final class AutoTotem {
     public static boolean enabled = true;
-    private static int waitTicks = 0; // Sunucunun onay vermesi için bekleme süresi
+    private static int waitTicks = 0;
 
     public static void tick(Minecraft mc) {
-        if (!enabled || mc.player == null || mc.gameMode == null) return;
+        if (!enabled || mc.player == null || mc.gameMode == null || mc.getConnection() == null) return;
         LocalPlayer p = mc.player;
         Inventory inv = p.getInventory();
 
-        // Kalkan elinde totem varsa hiçbir şey yapma
         if (p.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) {
             waitTicks = 0;
             return;
         }
 
-        // Eğer zaten takas yaptıysak ve sunucunun onay vermesini bekliyorsak, bekle
         if (waitTicks > 0) {
             waitTicks--;
             return;
         }
 
-        // Envanterin tamamında (0-35) totem ara
         int slot = Inv.findAny(inv, Items.TOTEM_OF_UNDYING);
         if (slot < 0) return;
 
-        // Menu slotunu hesapla
-        int menuSlot = Inv.menuSlot(slot);
-
-        // DOGRUDAN KALKAN ELINE TAKAS (Button 40 = Offhand)
-        mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, menuSlot, 40, ClickType.SWAP, p);
-
-        // Takas yapıldıktan sonra sunucunun onay vermesi için 10 tick (0.5 saniye) bekle.
-        // Bu sayede "gidip gelme" (desync) sorunu yaşanmaz.
-        waitTicks = 10;
+        if (slot < 9) {
+            // Hotbar'daki totem
+            int prev = inv.getSelectedSlot();
+            if (slot != prev) {
+                inv.setSelectedSlot(slot);
+                mc.getConnection().send(new ServerboundSetCarriedItemPacket(slot));
+            }
+            mc.getConnection().send(new ServerboundPlayerActionPacket(
+                    ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND, BlockPos.ZERO, Direction.DOWN));
+            if (slot != prev) {
+                inv.setSelectedSlot(prev);
+                mc.getConnection().send(new ServerboundSetCarriedItemPacket(prev));
+            }
+        } else {
+            // Envanterdeki totem: Doğrudan paket gönder (Ekranı güncellemez, desync yapmaz)
+            int menuSlot = Inv.menuSlot(slot);
+            mc.getConnection().send(new ServerboundContainerClickPacket(
+                    p.inventoryMenu.containerId,
+                    p.inventoryMenu.getStateId(),
+                    (short) menuSlot,
+                    (byte) 40,
+                    ClickType.SWAP,
+                    p.inventoryMenu.getCarried(),
+                    new Int2ObjectOpenHashMap<>() // Boş değişiklik haritası
+            ));
+        }
+        
+        waitTicks = 2; // Paketin sunucuya ulaşması için kısa bir bekleme
     }
-}
+        }
