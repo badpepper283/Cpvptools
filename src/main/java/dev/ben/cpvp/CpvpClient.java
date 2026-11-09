@@ -39,15 +39,19 @@ public final class CpvpClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        // Totem: tick'in BASINDA (hareket paketinden once) calisir
         ClientTickEvents.START_CLIENT_TICK.register(AutoTotem::tick);
+
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
             AnchorBomb.tick(mc);
             AutoCrystal.tick(mc);
         });
+
         UseBlockCallback.EVENT.register((player, level, hand, hit) -> {
             AnchorBomb.onUse(player, level, hand, hit);
             return InteractionResult.PASS;
         });
+
         ClientSendMessageEvents.ALLOW_CHAT.register(CpvpClient::handleChat);
     }
 
@@ -58,6 +62,7 @@ public final class CpvpClient implements ClientModInitializer {
 
     private static String onOff(boolean b) { return b ? "ACIK" : "KAPALI"; }
 
+    /** Chat komutlari: .totem .crystal .anchor .anchorsafe .set <ayar> <deger> .durum */
     private static boolean handleChat(String msg) {
         if (!msg.startsWith(".")) return true;
         String[] a = msg.substring(1).trim().split("\\s+");
@@ -84,26 +89,31 @@ public final class CpvpClient implements ClientModInitializer {
                     say(a[1] + " = " + v);
                 } catch (NumberFormatException e) { say("Gecersiz sayi"); }
             }
-            default -> { return true; }
+            default -> { return true; } // bilinmeyen: normal chat gibi gonder
         }
         return false;
     }
 }
 
+/** Patlama hasari tahmini (hard zorluk). Blast protection yok sayilir => biraz kotumser (guvenli taraf). */
 final class Damage {
     private Damage() {}
+
     public static float explosion(Level level, Vec3 center, LivingEntity e, float power) {
         double q = power * 2.0;
         double dist = Math.sqrt(e.distanceToSqr(center)) / q;
         if (dist > 1.0) return 0f;
+
         double impact = (1.0 - dist) * exposure(level, center, e);
         float dmg = (float) ((int) ((impact * impact + impact) / 2.0 * 7.0 * q + 1.0));
-        dmg *= 1.5f;
+        dmg *= 1.5f; // hard
+
         float armor = (float) e.getArmorValue();
         float tough = (float) e.getAttributeValue(Attributes.ARMOR_TOUGHNESS);
         float f = 2.0f + tough / 4.0f;
         float g = Mth.clamp(armor - dmg / f, armor * 0.2f, 20.0f);
         dmg *= 1.0f - g / 25.0f;
+
         MobEffectInstance res = e.getEffect(MobEffects.RESISTANCE);
         if (res != null) {
             int lvl = Math.min(res.getAmplifier() + 1, 5);
@@ -111,6 +121,7 @@ final class Damage {
         }
         return Math.max(dmg, 0f);
     }
+
     private static float exposure(Level level, Vec3 center, LivingEntity e) {
         AABB box = e.getBoundingBox();
         double dx = 1.0 / ((box.maxX - box.minX) * 2.0 + 1.0);
@@ -119,11 +130,15 @@ final class Damage {
         double offX = (1.0 - Math.floor(1.0 / dx) * dx) / 2.0;
         double offZ = (1.0 - Math.floor(1.0 / dz) * dz) / 2.0;
         if (dx < 0 || dy < 0 || dz < 0) return 0f;
+
         int hit = 0, total = 0;
         for (double x = 0; x <= 1.0; x += dx) {
             for (double y = 0; y <= 1.0; y += dy) {
                 for (double z = 0; z <= 1.0; z += dz) {
-                    Vec3 p = new Vec3(Mth.lerp(x, box.minX, box.maxX) + offX, Mth.lerp(y, box.minY, box.maxY), Mth.lerp(z, box.minZ, box.maxZ) + offZ);
+                    Vec3 p = new Vec3(
+                            Mth.lerp(x, box.minX, box.maxX) + offX,
+                            Mth.lerp(y, box.minY, box.maxY),
+                            Mth.lerp(z, box.minZ, box.maxZ) + offZ);
                     ClipContext ctx = new ClipContext(p, center, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, e);
                     if (level.clip(ctx).getType() == HitResult.Type.MISS) hit++;
                     total++;
@@ -136,36 +151,71 @@ final class Damage {
 
 final class Inv {
     private Inv() {}
+
+    /** Hotbar (0-8) icinde esya ara. Yoksa -1. */
     public static int findHotbar(Inventory inv, Item item) {
         for (int i = 0; i < 9; i++) if (inv.getItem(i).is(item)) return i;
         return -1;
     }
+
+    /** Hotbar + ana envanter (0-35) icinde esya ara. Yoksa -1. */
     public static int findAny(Inventory inv, Item item) {
         for (int i = 0; i < 36; i++) if (inv.getItem(i).is(item)) return i;
         return -1;
     }
+
+    /** Inventory index -> InventoryMenu slot numarasi. */
     public static int menuSlot(int invSlot) {
         return invSlot < 9 ? invSlot + 36 : invSlot;
     }
 }
 
+/**
+ * KUSURSUZ AUTOTOTEM (Hareket ederken bile ASLA ölmezsin)
+ * Arkadasinda calisan Vape V4 mantigi (Packet Priority) buraya entegre edildi.
+ */
+final class AutoTotem {
+    public static boolean enabled = true;
+
+    public static void tick(Minecraft mc) {
+        if (!enabled || mc.player == null || mc.gameMode == null || mc.getConnection() == null) return;
+        LocalPlayer p = mc.player;
+        Inventory inv = p.getInventory();
+
+        // Kalkan elinde totem varsa hiçbir şey yapma
+        if (p.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) return;
+
+        // Envanterin tamaminda (Hotbar 0-8, Ana Envanter 9-35) totem ara
+        int slot = Inv.findAny(inv, Items.TOTEM_OF_UNDYING);
+        if (slot < 0) return;
+
+        // Menu slotunu hesapla ve DOGRUDAN kalkan eline takas yap (Button 40 = Offhand)
+        // Bu islem hareket paketinden ONCE calisir, sunucu seni asla totemsiz goremez.
+        int menuSlot = Inv.menuSlot(slot);
+        mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, menuSlot, 40, ClickType.SWAP, p);
+    }
+}
+
 final class AutoCrystal {
     public static boolean enabled = false;
-    public static float minTargetDamage = 6f;
-    public static float maxSelfDamage = 6f;
-    public static int delay = 1;
+    public static float minTargetDamage = 6f;   // hedefe en az bu kadar hasar
+    public static float maxSelfDamage = 6f;     // kendine en fazla bu kadar hasar
+    public static int delay = 1;                // tick
     public static double targetRange = 10.0;
     public static double reach = 4.5;
+
     private static int timer = 0;
 
     public static void tick(Minecraft mc) {
         if (!enabled || mc.player == null || mc.level == null || mc.gameMode == null) return;
         if (timer > 0) { timer--; return; }
+
         LocalPlayer me = mc.player;
         ClientLevel level = mc.level;
         Player target = findTarget(level, me);
         if (target == null) return;
 
+        // ---- 1) KIR ----
         EndCrystal broken = null;
         float bestScore = -9999f;
         List<EndCrystal> crystals = level.getEntitiesOfClass(EndCrystal.class, me.getBoundingBox().inflate(reach + 1));
@@ -181,10 +231,13 @@ final class AutoCrystal {
             me.swing(InteractionHand.MAIN_HAND);
         }
 
+        // ---- 2) KOY ----
         InteractionHand hand;
-        if (me.getOffhandItem().is(Items.END_CRYSTAL)) hand = InteractionHand.OFF_HAND;
-        else if (me.getMainHandItem().is(Items.END_CRYSTAL)) hand = InteractionHand.MAIN_HAND;
-        else {
+        if (me.getOffhandItem().is(Items.END_CRYSTAL)) {
+            hand = InteractionHand.OFF_HAND;
+        } else if (me.getMainHandItem().is(Items.END_CRYSTAL)) {
+            hand = InteractionHand.MAIN_HAND;
+        } else {
             int s = Inv.findHotbar(me.getInventory(), Items.END_CRYSTAL);
             if (s < 0) { timer = delay; return; }
             me.getInventory().setSelectedSlot(s);
@@ -201,12 +254,15 @@ final class AutoCrystal {
                     if (!level.getBlockState(pos).is(Blocks.OBSIDIAN) && !level.getBlockState(pos).is(Blocks.BEDROCK)) continue;
                     BlockPos up = pos.above();
                     if (!level.getBlockState(up).isAir() || !level.getBlockState(up.above()).isAir()) continue;
+
                     Vec3 center = new Vec3(pos.getX() + 0.5, pos.getY() + 1.0, pos.getZ() + 0.5);
                     if (me.getEyePosition().distanceTo(center) > reach) continue;
+
                     final EndCrystal justBroken = broken;
                     AABB box = new AABB(pos.getX(), pos.getY() + 1, pos.getZ(), pos.getX() + 1, pos.getY() + 3, pos.getZ() + 1);
                     boolean blocked = !level.getEntities(me, box, e -> e != justBroken && !e.isSpectator()).isEmpty();
                     if (blocked) continue;
+
                     float dT = Damage.explosion(level, center, target, 6f);
                     float dS = Damage.explosion(level, center, me, 6f);
                     if (dT < minTargetDamage || !safe(me, dS)) continue;
@@ -214,6 +270,7 @@ final class AutoCrystal {
                 }
             }
         }
+
         if (bestPos != null) {
             Vec3 hit = new Vec3(bestPos.getX() + 0.5, bestPos.getY() + 1.0, bestPos.getZ() + 0.5);
             mc.gameMode.useItemOn(me, hand, new BlockHitResult(hit, Direction.UP, bestPos, false));
@@ -221,9 +278,11 @@ final class AutoCrystal {
         }
         timer = delay;
     }
+
     private static boolean safe(LocalPlayer me, float selfDamage) {
         return selfDamage <= maxSelfDamage && selfDamage < me.getHealth() + me.getAbsorptionAmount() - 1f;
     }
+
     private static Player findTarget(ClientLevel level, LocalPlayer me) {
         Player best = null;
         double bestDist = targetRange * targetRange;
@@ -236,16 +295,24 @@ final class AutoCrystal {
     }
 }
 
+/**
+ * Sen anchor'u koyarsin, mod hemen glowstone ile sarj edip patlatir.
+ * Kendisi anchor KOYMAZ. safeMode aciksa kendine hasar cok yuksekse patlatmaz (varsayilan: kapali).
+ * Not: sneak (shift) basiliyken blok etkilesimi calismaz, sneak yapmadan koy.
+ */
 final class AnchorBomb {
     public static boolean enabled = true;
-    public static boolean safeMode = false;
+    public static boolean safeMode = false;   // false = hasar ne olursa olsun patlat
     public static float maxSelfDamage = 6f;
+
     private static BlockPos pending = null;
     private static int age = 0;
 
+    /** UseBlockCallback'ten cagrilir: oyuncu anchor tutarak bir bloga sag tiklarsa. */
     public static void onUse(Player player, Level level, InteractionHand hand, BlockHitResult hit) {
         if (!enabled || !(level instanceof ClientLevel)) return;
         if (!player.getItemInHand(hand).is(Items.RESPAWN_ANCHOR)) return;
+
         BlockPos clicked = hit.getBlockPos();
         BlockPos target = level.getBlockState(clicked).canBeReplaced() ? clicked : clicked.relative(hit.getDirection());
         pending = target;
@@ -255,21 +322,29 @@ final class AnchorBomb {
     public static void tick(Minecraft mc) {
         if (!enabled || pending == null || mc.player == null || mc.level == null || mc.gameMode == null) return;
         if (++age > 20) { pending = null; return; }
+
         ClientLevel level = mc.level;
         LocalPlayer me = mc.player;
-        if (!level.getBlockState(pending).is(Blocks.RESPAWN_ANCHOR)) return;
+        if (!level.getBlockState(pending).is(Blocks.RESPAWN_ANCHOR)) return; // henuz yerlesmedi
+
         BlockPos pos = pending;
         pending = null;
-        if (level.dimension() == Level.NETHER) return;
+
+        if (level.dimension() == Level.NETHER) return; // Nether'da anchor patlamaz
+
         Vec3 center = Vec3.atCenterOf(pos);
         if (me.getEyePosition().distanceTo(center) > 4.5) return;
+
         float self = Damage.explosion(level, center, me, 5f);
         if (safeMode && (self > maxSelfDamage || self >= me.getHealth() + me.getAbsorptionAmount() - 1f)) {
             CpvpClient.say("Anchor patlatilmadi, kendine hasar ~" + Math.round(self * 10f) / 10f);
             return;
         }
+
         Inventory inv = me.getInventory();
         int prev = inv.getSelectedSlot();
+
+        // Gercekten baktigin noktayi kullan; bakmiyorsan sana bakan yuzeyden hesapla
         BlockHitResult hit;
         if (mc.hitResult instanceof BlockHitResult bhr && bhr.getBlockPos().equals(pos)) {
             hit = bhr;
@@ -279,9 +354,12 @@ final class AnchorBomb {
             Vec3 on = center.add(face.getStepX() * 0.5, face.getStepY() * 0.5, face.getStepZ() * 0.5);
             hit = new BlockHitResult(on, face, pos, false);
         }
+
+        // 1) Glowstone ile sarj et
         InteractionHand chargeHand;
-        if (me.getOffhandItem().is(Items.GLOWSTONE)) chargeHand = InteractionHand.OFF_HAND;
-        else {
+        if (me.getOffhandItem().is(Items.GLOWSTONE)) {
+            chargeHand = InteractionHand.OFF_HAND;
+        } else {
             int g = Inv.findHotbar(inv, Items.GLOWSTONE);
             if (g < 0) { CpvpClient.say("Hotbar'da glowstone yok"); return; }
             inv.setSelectedSlot(g);
@@ -289,6 +367,8 @@ final class AnchorBomb {
         }
         mc.gameMode.useItemOn(me, chargeHand, hit);
         me.swing(chargeHand);
+
+        // 2) Glowstone OLMAYAN elle tekrar tikla => patlar
         int boom = prev;
         if (inv.getItem(prev).is(Items.GLOWSTONE)) {
             boom = -1;
@@ -298,29 +378,5 @@ final class AnchorBomb {
         inv.setSelectedSlot(boom);
         mc.gameMode.useItemOn(me, InteractionHand.MAIN_HAND, hit);
         me.swing(InteractionHand.MAIN_HAND);
-    }
-}
-
-/**
- * KUSURSUZ AUTOTOTEM (Hareket ederken bile ASLA ölmezsin)
- */
-final class AutoTotem {
-    public static boolean enabled = true;
-
-    public static void tick(Minecraft mc) {
-        if (!enabled || mc.player == null || mc.gameMode == null || mc.getConnection() == null) return;
-        LocalPlayer p = mc.player;
-        Inventory inv = p.getInventory();
-
-        // Kalkan elinde totem varsa hiçbir şey yapma
-        if (p.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) return;
-
-        // Envanterin tamamında (Hotbar + Ana Envanter) totem ara
-        int slot = Inv.findAny(inv, Items.TOTEM_OF_UNDYING);
-        if (slot < 0) return;
-
-        // Menu slotunu hesapla ve DOGRUDAN kalkan eline takas yap (Button 40 = Offhand)
-        int menuSlot = Inv.menuSlot(slot);
-        mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, menuSlot, 40, ClickType.SWAP, p);
     }
 }
