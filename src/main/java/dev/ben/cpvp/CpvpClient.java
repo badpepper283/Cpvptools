@@ -13,6 +13,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket; // YENİ EKLENDİ
 import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -26,6 +27,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
@@ -305,41 +307,36 @@ final class AnchorBomb {
 }
 
 /**
- * VAPE V4 SEVİYESİNDE AUTOTOTEM (Paket Tabanlı - Silent Swap)
- * Envanter açılmaz, State ID beklenmez, hareket paketleriyle çakışmaz.
+ * VAPE V4 SEVİYESİNDE AUTOTOTEM (Packet Tabanlı - Silent Swap)
+ * Ekrandaki envanteri değiştirmez, sadece sunucuya "takas et" der.
+ * Bu sayede hareket ederken ekranda totem gidip gelmez ve anında eline alır.
  */
 final class AutoTotem {
     public static boolean enabled = true;
+    private static int waitTicks = 0;
 
     public static void tick(Minecraft mc) {
         if (!enabled || mc.player == null || mc.gameMode == null || mc.getConnection() == null) return;
         LocalPlayer p = mc.player;
         Inventory inv = p.getInventory();
 
-        // Kalkan elinde totem varsa hiçbir şey yapma
-        if (p.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) return;
+        if (p.getOffhandItem().is(Items.TOTEM_OF_UNDYING)) {
+            waitTicks = 0;
+            return;
+        }
 
-        // Önce ana envanteri (9-35), sonra hotbar'ı (0-8) tara
-        int slot = -1;
-        for (int i = 9; i < 36; i++) {
-            if (inv.getItem(i).is(Items.TOTEM_OF_UNDYING)) {
-                slot = i;
-                break;
-            }
+        // Sunucu yanıt vermezse 5 tick (0.25 saniye) sonra tekrar dene
+        if (waitTicks > 0) {
+            waitTicks--;
+            return;
         }
-        if (slot < 0) {
-            for (int i = 0; i < 9; i++) {
-                if (inv.getItem(i).is(Items.TOTEM_OF_UNDYING)) {
-                    slot = i;
-                    break;
-                }
-            }
-        }
+
+        // Envanterin tamamında totem ara
+        int slot = Inv.findAny(inv, Items.TOTEM_OF_UNDYING);
         if (slot < 0) return;
 
-        // Paket tabanlı takas (Envanter penceresine bağımlı değil)
         if (slot < 9) {
-            // Hotbar'daki totemi seç, F tuşu paketi gönder, eski slota dön
+            // Hotbar'daki totem: F tuşu paketi gönder
             int prev = inv.getSelectedSlot();
             if (slot != prev) {
                 inv.setSelectedSlot(slot);
@@ -352,10 +349,19 @@ final class AutoTotem {
                 mc.getConnection().send(new ServerboundSetCarriedItemPacket(prev));
             }
         } else {
-            // Envanterdeki totemi doğrudan kalkan eline takas et
-            // handleInventoryMouseClick yerine doğrudan paket gönderimi daha güvenilirdir
+            // Envanterdeki totem: DOĞRUDAN PAKET gönder (Ekranı güncelleme, desync'i önle)
             int menuSlot = Inv.menuSlot(slot);
-            mc.gameMode.handleInventoryMouseClick(p.inventoryMenu.containerId, menuSlot, 40, ClickType.SWAP, p);
+            mc.getConnection().send(new ServerboundContainerClickPacket(
+                    p.inventoryMenu.containerId,
+                    p.inventoryMenu.getStateId(),
+                    (short) menuSlot,
+                    (byte) 40, // Button 40 = Offhand (Kalkan eli)
+                    ClickType.SWAP,
+                    p.inventoryMenu.getCarried(),
+                    new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<>()
+            ));
         }
+        
+        waitTicks = 5; // Paketin sunucuya ulaşması için 5 tick bekle
     }
 }
