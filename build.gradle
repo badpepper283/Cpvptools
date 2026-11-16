@@ -1,16 +1,16 @@
 plugins {
-    // 1.21.11 için doğru eklenti: fabric-loom-remap
-    id 'net.fabricmc.fabric-loom-remap' version '1.13-SNAPSHOT'
+    id 'net.fabricmc.fabric-loom-remap' version '1.14-SNAPSHOT'
 }
 version = '1.0.0'
 group = 'dev.ben.cpvp'
-repositories { mavenCentral() }
+repositories { 
+    mavenCentral() 
+}
 dependencies {
     minecraft "com.mojang:minecraft:1.21.11"
-    // Mojang yerine Yarn haritalamalarını kullanıyoruz
-    mappings "net.fabricmc:yarn:1.21.11+build.3:v2"
-    modImplementation "net.fabricmc:fabric-loader:0.18.3"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:0.140.0+1.21.11"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:0.19.3"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:0.141.4+1.21.11"
 }
 java {
     sourceCompatibility = JavaVersion.VERSION_21
