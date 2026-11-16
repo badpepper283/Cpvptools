@@ -1,19 +1,14 @@
 package dev.ben.cpvp;
 
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -32,7 +27,6 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
 
 public final class CpvpClient implements ClientModInitializer {
 
@@ -55,13 +49,6 @@ public final class CpvpClient implements ClientModInitializer {
             }
         });
 
-        // TRACERS (Duvarların arkasından çizgi çekme)
-        WorldRenderEvents.AFTER_ENTITIES.register(context -> {
-            if (Minecraft.getInstance().player != null && Minecraft.getInstance().level != null) {
-                Tracers.render(context.matrixStack(), context.consumers(), Minecraft.getInstance().level);
-            }
-        });
-
         ClientSendMessageEvents.ALLOW_CHAT.register(CpvpClient::handleChat);
     }
 
@@ -79,7 +66,6 @@ public final class CpvpClient implements ClientModInitializer {
             case "crystal" -> { AutoCrystal.enabled = !AutoCrystal.enabled; say("AutoCrystal " + (AutoCrystal.enabled ? "§aACIK" : "§cKAPALI")); }
             case "anchor" -> { AutoAnchor.enabled = !AutoAnchor.enabled; say("AutoAnchor " + (AutoAnchor.enabled ? "§aACIK" : "§cKAPALI")); }
             case "totem" -> { AutoTotem.enabled = !AutoTotem.enabled; say("AutoTotem " + (AutoTotem.enabled ? "§aACIK" : "§cKAPALI")); }
-            case "tracers" -> { Tracers.enabled = !Tracers.enabled; say("Tracers " + (Tracers.enabled ? "§aACIK" : "§cKAPALI")); }
             case "sprint" -> { Sprint.enabled = !Sprint.enabled; say("Sprint " + (Sprint.enabled ? "§aACIK" : "§cKAPALI")); }
             case "durum" -> say("K.Aura:" + KillAura.enabled + " Combo:" + ComboBot.enabled + " Crys:" + AutoCrystal.enabled + " Anc:" + AutoAnchor.enabled + " Totem:" + AutoTotem.enabled);
             default -> { return true; }
@@ -105,7 +91,7 @@ class TargetManager {
 }
 
 // ==========================================
-// KILLAURA (Kılıç/Balta Değişimi ve Vurma)
+// KILLAURA
 // ==========================================
 final class KillAura {
     public static boolean enabled = true;
@@ -195,7 +181,7 @@ final class ComboBot {
 }
 
 // ==========================================
-// AUTO CRYSTAL (Etraftaki Obsidyenlere Kristal Koyar)
+// AUTO CRYSTAL
 // ==========================================
 final class AutoCrystal {
     public static boolean enabled = true;
@@ -235,7 +221,7 @@ final class AutoCrystal {
 }
 
 // ==========================================
-// AUTO ANCHOR (Hedefin yanına Anchor Koyar ve Patlatır)
+// AUTO ANCHOR
 // ==========================================
 final class AutoAnchor {
     public static boolean enabled = true;
@@ -311,29 +297,9 @@ final class AutoTotem {
 final class Sprint {
     public static boolean enabled = true;
     public static void tick(Minecraft mc) {
-        if (enabled && mc.player != null && mc.player.input.forwardImpulse > 0) {
+        if (enabled && mc.player != null && mc.player.input.hasForwardImpulse()) {
             mc.player.setSprinting(true);
         }
-    }
-}
-
-final class Tracers {
-    public static boolean enabled = true;
-    public static void render(PoseStack matrices, net.minecraft.client.renderer.MultiBufferSource vertexConsumers, ClientLevel level) {
-        if (!enabled || Minecraft.getInstance().player == null) return;
-        VertexConsumer buffer = vertexConsumers.getBuffer(RenderType.lines());
-        Vec3 camera = Minecraft.getInstance().gameRenderer.getMainCamera().getPosition();
-        matrices.pushPose();
-        matrices.translate(-camera.x, -camera.y, -camera.z);
-        Matrix4f matrix = matrices.last().pose();
-        for (Player player : level.players()) {
-            if (player == Minecraft.getInstance().player || !player.isAlive()) continue;
-            Vec3 target = player.getBoundingBox().getCenter();
-            Vec3 start = Minecraft.getInstance().player.getEyePosition();
-            buffer.vertex(matrix, (float)start.x, (float)start.y, (float)start.z).color(255, 0, 0, 255).endVertex();
-            buffer.vertex(matrix, (float)target.x, (float)target.y, (float)target.z).color(255, 0, 0, 255).endVertex();
-        }
-        matrices.popPose();
     }
 }
 
@@ -342,4 +308,4 @@ final class Inv {
         for (int i = 0; i < 9; i++) if (inv.getItem(i).is(item)) return i;
         return -1;
     }
-                }
+}
