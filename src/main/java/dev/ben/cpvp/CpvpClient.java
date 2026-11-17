@@ -113,31 +113,38 @@ class ComboBot {
                 if (!mc.level.getBlockState(cell.above()).isAir()) continue;
                 if (!mc.level.getBlockState(cell.above(2)).isAir()) continue;
                 if (!mc.level.getBlockState(support).isFaceSturdy(mc.level, support, Direction.UP)) continue;
+                if (occupied(mc, cell)) continue; // içinde oyuncu/entity varsa blok konmaz
 
                 inv.setSelectedSlot(obs);
-                mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND,
+                var res = mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND,
                     new BlockHitResult(Vec3.atCenterOf(support).add(0, 0.5, 0), Direction.UP, support, false));
                 mc.player.swing(InteractionHand.MAIN_HAND);
+                mc.player.displayClientMessage(Component.literal("§7[DEBUG] obsi: " + res), false);
                 base = cell;
                 state = 2;
-                timer = 1; // sunucu bloğu işlesin
+                timer = 2; // sunucu bloğu işlesin
                 return;
             }
             state = 0; // uygun yer yok
         }
         // ---------- 2: KRİSTALİ OBSİDYENİN ÜSTÜNE KOY ----------
         else if (state == 2) {
-            if (base == null || !isCrystalBase(mc, base)) { state = 0; return; }
+            if (base == null || !isCrystalBase(mc, base) || occupied(mc, base)) {
+                mc.player.displayClientMessage(Component.literal("§7[DEBUG] kristal baz gecersiz/dolu"), false);
+                state = 0;
+                return;
+            }
 
             int crys = Inv.findHotbar(inv, Items.END_CRYSTAL);
             if (crys == -1) { state = 0; return; }
 
             inv.setSelectedSlot(crys);
-            mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND,
+            var res = mc.gameMode.useItemOn(mc.player, InteractionHand.MAIN_HAND,
                 new BlockHitResult(Vec3.atCenterOf(base).add(0, 0.5, 0), Direction.UP, base, false));
             mc.player.swing(InteractionHand.MAIN_HAND);
+            mc.player.displayClientMessage(Component.literal("§7[DEBUG] kristal: " + res), false);
             state = 3;
-            timer = 1;
+            timer = 2;
         }
         // ---------- 3: KRİSTALİ PATLAT (self-damage bilerek açık) ----------
         else if (state == 3) {
@@ -155,6 +162,13 @@ class ComboBot {
         }
     }
 
+    // Hücrede (obsidyen + 2 blok kristal alanı) oyuncu/entity var mı
+    private static boolean occupied(Minecraft mc, BlockPos cell) {
+        AABB box = new AABB(cell.getX(), cell.getY(), cell.getZ(),
+                            cell.getX() + 1, cell.getY() + 3, cell.getZ() + 1);
+        return !mc.level.getEntities((net.minecraft.world.entity.Entity) null, box, e -> !e.isSpectator()).isEmpty();
+    }
+
     // Kristal konabilecek obsidyen/bedrock: üstü ve onun üstü boş olmalı
     private static boolean isCrystalBase(Minecraft mc, BlockPos pos) {
         var bs = mc.level.getBlockState(pos);
@@ -167,9 +181,9 @@ class ComboBot {
     private static BlockPos findExistingBase(Minecraft mc, BlockPos targetPos) {
         for (Direction d : Direction.Plane.HORIZONTAL) {
             BlockPos a = targetPos.relative(d);
-            if (isCrystalBase(mc, a)) return a;
+            if (isCrystalBase(mc, a) && !occupied(mc, a)) return a;
             BlockPos b = a.below();
-            if (isCrystalBase(mc, b)) return b;
+            if (isCrystalBase(mc, b) && !occupied(mc, b)) return b;
         }
         return null;
     }
