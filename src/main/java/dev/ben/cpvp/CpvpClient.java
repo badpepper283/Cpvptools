@@ -130,7 +130,9 @@ class ComboBot {
         // ---------- 2: KRİSTALİ OBSİDYENİN ÜSTÜNE KOY ----------
         else if (state == 2) {
             if (base == null || !isCrystalBase(mc, base) || occupied(mc, base)) {
-                mc.player.displayClientMessage(Component.literal("§7[DEBUG] kristal baz gecersiz/dolu"), false);
+                String blk = base == null ? "null" : mc.level.getBlockState(base).getBlock().getName().getString();
+                boolean occ = base != null && occupied(mc, base);
+                mc.player.displayClientMessage(Component.literal("§7[DEBUG] baz sorunlu: blok=" + blk + " entityVar=" + occ), false);
                 state = 0;
                 return;
             }
@@ -150,12 +152,15 @@ class ComboBot {
         else if (state == 3) {
             if (base != null) {
                 BlockPos crysPos = base.above();
+                int found = 0;
                 for (EndCrystal c : mc.level.getEntitiesOfClass(EndCrystal.class,
                         new AABB(crysPos).inflate(1.0))) {
+                    found++;
                     mc.gameMode.attack(mc.player, c);
                     mc.player.swing(InteractionHand.MAIN_HAND);
                     break;
                 }
+                mc.player.displayClientMessage(Component.literal("§7[DEBUG] sahnede kristal: " + found), false);
             }
             base = null;
             state = 0;
